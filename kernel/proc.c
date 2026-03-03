@@ -5,9 +5,10 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "sysinfo.h"
 
 struct cpu cpus[NCPU];
-
+//进程数组
 struct proc proc[NPROC];
 
 struct proc *initproc;
@@ -126,7 +127,7 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
-
+  p->sysmask_trace = 0;
   return p;
 }
 
@@ -294,6 +295,7 @@ fork(void)
   pid = np->pid;
 
   np->state = RUNNABLE;
+  np->sysmask_trace = p->sysmask_trace;
 
   release(&np->lock);
 
@@ -691,5 +693,15 @@ procdump(void)
       state = "???";
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
+  }
+}
+void unusedpro_num(uint64 *num){
+  *num = 0;
+  struct proc* p;
+  //遍历进程数组
+  for(p=proc;p<&proc[NPROC];p++){
+    if(p->state != UNUSED){
+      (*num)++;
+    }
   }
 }

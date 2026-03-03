@@ -6,6 +6,7 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "sysinfo.h"
 
 uint64
 sys_exit(void)
@@ -94,4 +95,42 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+// trace系统调用
+//获取参数
+uint64
+sys_trace(void){
+  int mask;
+  //用户进程调用trace函数，系统调用号为[SYS_trace]
+  //trace这个系统调用的参数是a0~a6这些寄存器的内容
+  //a0内容赋值给mask
+  if(argint(0,&mask) < 0){
+    return -1;
+  }
+  //进程只有在调用trace时，其sysmask_trace才会生效
+  myproc()->sysmask_trace = mask;
+  return 0;
+}
+//获取系统的空闲内存字节数和非运行进程数
+uint64
+sys_sysinfo(void){
+  struct sysinfo si;
+  //指针比引用方便些
+  //直接在目标地址写入
+  unusedpro_num(&si.nproc);
+  kfree_mem_size(&si.freemem);
+  //获取参数
+  //获取地址
+  uint64 dstaddr;
+  //argaddr的作用是将地址参数写入指针
+  //*ip = a0;
+  //指针变量ip记录着a0的值
+  if(argaddr(0,&dstaddr) < 0){
+    return -1;
+  }
+  //dstaddr是个地址
+  if(copyout(myproc()->pagetable,dstaddr,(char*)&si,sizeof(si))<0){
+    return -1;
+  }
+  return 0;
 }
