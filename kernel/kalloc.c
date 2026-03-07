@@ -39,6 +39,7 @@ freerange(void *pa_start, void *pa_end)
     kfree(p);
 }
 
+// 释放单页
 // Free the page of physical memory pointed at by v,
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when

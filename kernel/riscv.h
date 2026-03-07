@@ -338,6 +338,8 @@ sfence_vma()
 #define PTE2PA(pte) (((pte) >> 10) << 12)
 
 #define PTE_FLAGS(pte) ((pte) & 0x3FF)
+//判断PTE是否为叶子节点，也就是最后一级
+//该页可读、可写或可执行？
 
 // extract the three 9-bit page table indices from a virtual address.
 #define PXMASK          0x1FF // 9 bits

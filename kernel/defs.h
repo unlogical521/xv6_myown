@@ -158,10 +158,10 @@ void            uartputc_sync(int);
 int             uartgetc(void);
 
 // vm.c
-void            kvminit(void);
-void            kvminithart(void);
-uint64          kvmpa(uint64);
-void            kvmmap(uint64, uint64, uint64, int);
+void            kvminit();
+void            kvminithart();
+uint64          kvmpa(pagetable_t,uint64);
+void            kvmmap(pagetable_t,uint64, uint64, uint64, int);
 int             mappages(pagetable_t, uint64, uint64, uint64, int);
 pagetable_t     uvmcreate(void);
 void            uvminit(pagetable_t, uchar *, uint);
@@ -177,7 +177,18 @@ void            uvmclear(pagetable_t, uint64);
 uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
+int             copyin_new(pagetable_t, char*, uint64, uint64);
+int             copyinstr_new(pagetable_t,char *,uint64,uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
+//打印页表内容
+void            vmprint(pagetable_t,int);
+//进程私有内核页表
+pagetable_t            proc_kvminit(void);
+//只释放页表本身，而不释放叶子结点的物理页
+void            vmfree_noleaf(pagetable_t);
+// 只复制映射
+int             copy_usermap_to_prokernel(pagetable_t,pagetable_t,uint64,uint64);
+uint64          shrink_mappaging(pagetable_t , uint64 , uint64);
 
 // plic.c
 void            plicinit(void);

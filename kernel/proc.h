@@ -1,4 +1,8 @@
 // Saved registers for kernel context switches.
+#ifndef _PROC_H_
+#define _PROC_H_
+
+#include "spinlock.h"
 struct context {
   uint64 ra;
   uint64 sp;
@@ -103,4 +107,7 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  // 进程的内核页表副本
+  pagetable_t p_kernelpagetable;// 将全局内核页表的内容映射到这张页表
 };
+#endif
