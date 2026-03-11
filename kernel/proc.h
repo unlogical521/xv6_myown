@@ -103,4 +103,17 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  //  报警间隔,是设置好的定量
+  int ticks_interval;
+  //  倒计时，变量
+  //  当减小到0时，需要跳转到软件中断处理
+  //  前提是此时没有正在进行的软件中断
+  //  否则只能等待
+  int ticks;
+  //  1表示有软件中断处理未结束，
+  int sigalarm_going;
+  //  软中断处理函数函数指针
+  void (*handler)(void);
+  // trapframe副本
+  struct trapframe *sigalarm_trapframe;
 };

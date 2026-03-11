@@ -23,6 +23,9 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+//  添加新的系统调用
+int sigreturn(void);
+int sigalarm(int ticks,void (*)());
 
 // ulib.c
 int stat(const char*, struct stat*);

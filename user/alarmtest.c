@@ -28,7 +28,7 @@ main(int argc, char *argv[])
 }
 
 volatile static int count;
-
+//   软中断处理函数
 void
 periodic()
 {
@@ -45,6 +45,7 @@ test0()
   int i;
   printf("test0 start\n");
   count = 0;
+  // 系统调用
   sigalarm(2, periodic);
   for(i = 0; i < 1000*500000; i++){
     if((i % 1000000) == 0)

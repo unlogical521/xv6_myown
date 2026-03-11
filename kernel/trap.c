@@ -32,7 +32,24 @@ trapinithart(void)
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
-//
+int sigalarm(int ticks_interval,void(*handler)()){
+  struct proc *p = myproc();
+  //设置参数
+  p->ticks_interval = ticks;
+  p->ticks = ticks;
+  p->handler = handler;
+  p->sigalarm_going = 0;
+  return 0;
+}
+int sigreturn(){
+  //恢复到从sigalarm()调用后继续执行
+  // 这个执行完才能进行新的sigalam;
+  struct proc* p = myproc();
+  *p->trapframe = *p->sigalarm_trapframe;
+  //开门
+  p->sigalarm_going = 0;
+  return 0;
+}
 void
 usertrap(void)
 {
@@ -58,6 +75,7 @@ usertrap(void)
 
     // sepc points to the ecall instruction,
     // but we want to return to the next instruction.
+    // 如果是系统调用，则返回时从下一条指令继续
     p->trapframe->epc += 4;
 
     // an interrupt will change sstatus &c registers,
@@ -67,9 +85,12 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+    // 非系统调用的中断，从原位置继续
+    // 软件中断真正核心的就是保存和修改状态
+
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+    printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
   }
 
@@ -77,8 +98,23 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
+    // 软中段中的ticks参数 = 系统时钟的滴答声 = 倒计时
+    // 没有处理在进行才能进去
+    if(p->ticks_interval!=0 && --p->ticks<=0 && p->sigalarm_going == 0){
+      //关门上锁
+      p->sigalarm_going = 1;
+      //重置倒计时
+      p->ticks = p->ticks_interval;
+      // 保存中断发生时的状态
+      // 改内容，不要只改指针
+      // 恢复时还是这个trapframe,但执行sigreturn调用后可就面目全非了
+      *p->sigalarm_trapframe = *p->trapframe;
+      // 恢复时，从handler执行
+      p->trapframe->epc = (uint64)p->handler;
+    }
     yield();
+  }
 
   usertrapret();
 }

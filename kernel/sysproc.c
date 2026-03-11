@@ -57,7 +57,7 @@ sys_sleep(void)
 {
   int n;
   uint ticks0;
-
+  backtrace();
   if(argint(0, &n) < 0)
     return -1;
   acquire(&tickslock);
@@ -94,4 +94,37 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+// 软件中断
+// 这个系统调用，跳转到进程的处理函数那执行
+// 重要的是理解陷入、处理和返回时寄存器和程序计数器的变化
+uint64
+sys_sigalarm(void){
+  //倒计时
+  int ticks;
+  uint64 handler;
+  if(argint(0,&ticks) < 0){
+    return -1;
+  }
+  if(argaddr(1,&handler) < 0){
+    return -1;
+  }
+  return sigalarm(ticks,(void(*)())handler);
+  // 这个系统调用的作用？
+  // 跳到处理函数位置
+  // 在此之前需要保存寄存器状态
+  // 陷入时，已将进程状态保存到trapframe
+  // 中断结束后，自动返回，
+  // 因此当满足软件中断条件时，只需要将trapframe中的程序计数器的值改为handler函数的位置
+}
+// 这个系统调用触发，又使得trapframe面目全非
+// 需要设计一个副本用于保存特定时期进程的状态
+// 这个则返回sigalarm调用的下一条指令继续执行
+// 前提恢复寄存器状态
+// 恢复谁的呢？
+// 恢复到调用sigalarm时保存的状态
+// 需要完全恢复trapframe的值并且epc+4;
+uint64
+sys_sigreturn(void){
+  return sigreturn();
 }

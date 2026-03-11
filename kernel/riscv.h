@@ -318,7 +318,14 @@ sfence_vma()
   // the zero, zero means flush all TLB entries.
   asm volatile("sfence.vma zero, zero");
 }
-
+//  GCC编译器将当前正在执行的函数的帧指针保存在s0寄存器
+static inline uint64
+r_fp()
+{
+  uint64 x;
+  asm volatile("mv %0, s0" : "=r" (x) );
+  return x;
+}
 
 #define PGSIZE 4096 // bytes per page
 #define PGSHIFT 12  // bits of offset within a page

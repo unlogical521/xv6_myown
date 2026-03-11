@@ -132,3 +132,14 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+void backtrace(){
+  //获取当前函数的栈帧指针
+  uint64 fp = r_fp();
+  printf("backtrace:\n");
+  while(PGROUNDDOWN(fp) != PGROUNDUP(fp)){
+    // 返回地址
+    uint64 ra = *(uint64*)(fp - 8);
+    printf("%p\n",ra);
+    fp = *(uint64*)(fp - 16);
+  }
+}
