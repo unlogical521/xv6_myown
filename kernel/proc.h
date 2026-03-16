@@ -1,8 +1,10 @@
 // Saved registers for kernel context switches.
 struct context {
+  // 该进程
+  // 返回地址
   uint64 ra;
+  // 栈顶
   uint64 sp;
-
   // callee-saved
   uint64 s0;
   uint64 s1;

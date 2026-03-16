@@ -29,7 +29,23 @@ barrier()
   //
   // Block until all threads have called barrier() and
   // then increment bstate.round.
-  //
+  // 线程到达这里时，需要等待，直到所有线程到齐
+  // 条件：所有到齐，通过 ++bstate.nthread == nthread 进行判断
+  // 共享变量加锁
+  // 每次调用这个函数时++
+  pthread_mutex_lock(&bstate.barrier_mutex);
+  if(++bstate.nthread < nthread){
+    // 等待？
+    pthread_cond_wait(&bstate.barrier_cond,&bstate.barrier_mutex);
+  }
+  else{
+    //新的一轮
+    bstate.round ++;
+    bstate.nthread = 0;
+    //唤醒所有在barrier_cond这个（等待队列）等待的线程
+    pthread_cond_broadcast(&bstate.barrier_cond);
+  }
+  pthread_mutex_unlock(&bstate.barrier_mutex);
   
 }
 
