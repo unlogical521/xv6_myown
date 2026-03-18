@@ -57,8 +57,12 @@ sparse_memory_unmap(char *s)
       printf("error forking\n");
       exit(1);
     } else if (pid == 0) {
-      sbrk(-1L * REGION_SZ);
+      char *addr = sbrk(-1L * REGION_SZ);
+      printf("child pid %d sbrk returned %p\n", getpid(), addr);
+      // 在写之前打印一次
+      printf("child pid %d about to write to %p\n", getpid(), i);
       *(char **)i = i;
+      printf("child pid %d wrote ok\n", getpid());
       exit(0);
     } else {
       int status;

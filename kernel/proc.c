@@ -143,6 +143,7 @@ freeproc(struct proc *p)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
   p->sz = 0;
+  p->lazy_start_va = 0;
   p->pid = 0;
   p->parent = 0;
   p->name[0] = 0;

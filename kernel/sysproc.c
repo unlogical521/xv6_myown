@@ -38,6 +38,8 @@ sys_wait(void)
   return wait(p);
 }
 
+// Replace your sys_sbrk implementation with the following logic.
+// Adjust file/name to where your sys_sbrk actually lives.
 uint64
 sys_sbrk(void)
 {
@@ -46,9 +48,29 @@ sys_sbrk(void)
 
   if(argint(0, &n) < 0)
     return -1;
-  addr = myproc()->sz;
-  if(growproc(n) < 0)
+  struct proc* p = myproc();
+  addr = p->sz;
+
+if (n > 0) {
+  uint64 oldsz = p->sz;
+  uint64 lazy_start = PGROUNDUP(oldsz);
+  if (p->lazy_start_va == 0 || p->lazy_start_va > lazy_start)
+    p->lazy_start_va = lazy_start;
+  p->sz += n;
+} else if (p->sz + n > 0) {
+  uint64 oldsz = p->sz;
+  uint64 newsz = oldsz + n;
+  p->sz = uvmdealloc(p->pagetable, oldsz, newsz);
+  if (p->lazy_start_va != 0) {
+    if (PGROUNDUP(p->sz) <= p->lazy_start_va) {
+      p->lazy_start_va = 0;
+    } else if (p->lazy_start_va < PGROUNDUP(p->sz)) {
+      p->lazy_start_va = PGROUNDUP(p->sz);
+    }
+  }
+} else {
     return -1;
+  }
   return addr;
 }
 

@@ -5,6 +5,9 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
+
 
 /*
  * the kernel's page table.
@@ -181,9 +184,11 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
+      // panic("uvmunmap: walk");
+      continue;
     if((*pte & PTE_V) == 0)
-      panic("uvmunmap: not mapped");
+      // panic("uvmunmap: not mapped");
+      continue;
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
     if(do_free){
@@ -315,9 +320,11 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
+      // panic("uvmcopy: pte should exist");
+      continue;
     if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+      // panic("uvmcopy: page not present");
+      continue;
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)
@@ -357,6 +364,9 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   uint64 n, va0, pa0;
 
   while(len > 0){
+    if(shouldLazyAlloc(dstva)){
+      lazy_alloc(dstva);
+    }
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
@@ -380,8 +390,13 @@ int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
   uint64 n, va0, pa0;
-
+  if(shouldLazyAlloc(srcva)){
+    lazy_alloc(srcva);
+  }
   while(len > 0){
+    if(shouldLazyAlloc(srcva)){
+      lazy_alloc(srcva);
+    }
     va0 = PGROUNDDOWN(srcva);
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
@@ -438,5 +453,42 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return 0;
   } else {
     return -1;
+  }
+}
+int shouldLazyAlloc(uint64 va){
+  struct proc* p = myproc();
+  pte_t* pte;
+  // 惰性分配页
+  // 对于xv6系统，只能处于堆中
+  // 不在堆中的页面错误不予处理
+  // 怎么锁定在堆中？
+  // 避免栈溢出
+  // 栈溢出的临界值？
+  // copyout时，内核数据拷贝到进程堆中
+  // 这时，也可能触发缺页故障
+  return va < p->sz && 
+  va>=p->lazy_start_va && 
+  (((pte=walk(p->pagetable,va,0))==0) || ((*pte & PTE_V) == 0));
+}
+
+void lazy_alloc(uint64 va){
+  struct proc* p = myproc();
+  char* pa;
+  if((pa = kalloc())==0){
+    printf("lazy_alooc: no more memory");
+    p->killed = 1;
+  }
+  else{      
+    // 映射
+    memset(pa,0,PGSIZE);
+    if(mappages(p->pagetable,PGROUNDDOWN(va),PGSIZE,(uint64)pa,PTE_W|PTE_X|PTE_R|PTE_U)!=0){
+      printf("lazy_alloc:map loser");
+      kfree(pa);
+      p->killed = 1;
+    }
+    else{
+      //如果懒分配成功，往上抬一抬
+      p->lazy_start_va += PGSIZE;
+    }
   }
 }

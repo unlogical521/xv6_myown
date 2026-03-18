@@ -67,7 +67,16 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  } 
+  else if(r_scause() == 15 || r_scause() == 13){
+    // 在这里给出错的页面分配内存
+    // 出错的地址
+    uint64 va = r_stval();
+    if(shouldLazyAlloc(va)){     
+      lazy_alloc(va);
+    }
+  }
+  else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
