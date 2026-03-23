@@ -28,6 +28,53 @@ trapinithart(void)
 {
   w_stvec((uint64)kernelvec);
 }
+// 判断是否是写时复制页
+int should_copyon_write(uint64 va){
+  struct proc* p = myproc();
+  pte_t* pte;
+  //写时复制页有哪些特征？
+  // cow标记、不可写、
+  if((pte = walk(p->pagetable,va,0))==0){
+    return 0;
+  }
+  return (PGROUNDDOWN(va) < p->sz) && ((*pte)&PTE_V) && ((*pte)&PTE_COW);
+}
+// 写实复制逻辑
+// 分配新的物理页，并且复制原物理页的内容
+int copy_on_write(uint64 va){
+  void* new_pa;
+  uint64 old_pa;
+  pte_t* pte;
+  struct proc * p = myproc();
+  uint64 flags;
+  pte = walk(p->pagetable,va,0);
+  old_pa = PTE2PA(*pte);
+  /// 这里的分配有些问题
+  // 如果旧页的引用数为1，那么就不需要重新分配新的
+  // 如果还要分配就是平白制造开销，只是做了一次数据移动
+  if((new_pa=cow_kalloc((void*)(old_pa))) == 0){
+    return -1;
+  }
+  // 先重新建立映射
+  flags =  (PTE_FLAGS(*pte) & ~PTE_COW) | PTE_W;
+  // 如果还是旧页
+  if(new_pa == (void*)old_pa){
+    // 只改权限位
+    *pte =  ((*pte) & ~PTE_COW) | PTE_W;
+    return 0;
+  }
+  // 在cow_kalloc()中已经做了处理
+  // 这里标志位设为0，避免引用数重复--
+  uvmunmap(p->pagetable,PGROUNDDOWN(va),1,0);
+  // 新页，所有权限?
+  if((mappages(p->pagetable,PGROUNDDOWN(va),PGSIZE,(uint64)new_pa,flags))!=0){
+    // 映射失败，释放物理页
+    kfree(new_pa);
+    // 返回-1，杀死进程
+    return -1;
+  }
+  return 0;
+}
 
 //
 // handle an interrupt, exception, or system call from user space.
@@ -67,7 +114,18 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  } 
+  else if(r_scause() == 13 || r_scause() == 15){
+    // 写时复制逻辑
+    uint64 va = r_stval();
+    if(should_copyon_write(va)){
+      if(copy_on_write(va)!=0){
+        p->killed = 1;
+      }
+    }
+    
+  }
+  else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
