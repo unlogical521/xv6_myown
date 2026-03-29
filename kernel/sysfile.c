@@ -303,12 +303,30 @@ sys_open(void)
       end_op();
       return -1;
     }
-  } else {
-    if((ip = namei(path)) == 0){
-      end_op();
-      return -1;
+  } 
+  else {
+    int symlink_depth = 10;
+    while(1){
+      if((ip = namei(path)) == 0){
+        end_op();
+        return -1;
+      }
+      ilock(ip);
+      if(ip->type == T_SYMLINK && (omode & O_NOFOLLOW) == 0){
+        // 读出符号链接内容到 path，然后重试 namei
+        if(readi(ip, 0, (uint64)path, 0, MAXPATH) < 0 || --symlink_depth == 0){
+          iunlockput(ip);
+          end_op();
+          return -1;
+        }
+        iunlockput(ip);
+        // loop continues, namei will be called on new path
+      } else {
+        // ip 已经被 ilock 住，此时跳出循环，后续不应再次 ilock(ip)
+        break;
+      }
     }
-    ilock(ip);
+    // 这里不要再次 ilock(ip); ip 已经被锁住
     if(ip->type == T_DIR && omode != O_RDONLY){
       iunlockput(ip);
       end_op();
@@ -482,5 +500,29 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+uint64
+sys_symlink(void){
+  struct inode* ip;
+  char src[MAXPATH], dst[MAXPATH];
+
+  if(argstr(0, src, MAXPATH) < 0 || argstr(1, dst, MAXPATH) < 0){
+    return -1;
+  }
+
+  begin_op();
+  if((ip = create(dst, T_SYMLINK, 0, 0)) == 0){
+    end_op();
+    return -1;
+  }
+  // 将 src 写入到这个 inode（作为符号链接内容）
+  if(writei(ip, 0, (uint64)src, 0, strlen(src)) < 0){
+    iunlockput(ip);   // 必须先释放 inode
+    end_op();
+    return -1;
+  }
+  iunlockput(ip);
+  end_op();
   return 0;
 }

@@ -374,6 +374,7 @@ iunlockput(struct inode *ip)
 
 // Return the disk block address of the nth block in inode ip.
 // If there is no such block, bmap allocates one.
+// 根据inode找块地址
 static uint
 bmap(struct inode *ip, uint bn)
 {
@@ -386,9 +387,10 @@ bmap(struct inode *ip, uint bn)
     return addr;
   }
   bn -= NDIRECT;
-
+  //
   if(bn < NINDIRECT){
     // Load indirect block, allocating if necessary.
+    //块地址
     if((addr = ip->addrs[NDIRECT]) == 0)
       ip->addrs[NDIRECT] = addr = balloc(ip->dev);
     bp = bread(ip->dev, addr);
@@ -400,7 +402,37 @@ bmap(struct inode *ip, uint bn)
     brelse(bp);
     return addr;
   }
-
+  // 在二级块中找第bn个物理块地址
+  // 有的话直接返回，没有的话需要建立映射？
+  // 与虚拟内存和物理内存相似？
+  bn -= NINDIRECT;
+  if(bn < (NINDIRECT * NINDIRECT)){
+    // 分配二级块
+    if((addr = ip->addrs[NDIRECT+1]) == 0){
+      ip->addrs[NDIRECT+1] = addr = balloc(ip->dev);
+    }
+    // 确定 bp，后续可能要修改，写入地址什么的，因此使用read返回加锁
+    bp = bread(ip->dev,addr);
+    a  = (uint*)bp->data;
+    // 根据bn锁定一级间接块的位置
+    int bn2 = bn / (BSIZE / sizeof(uint));
+    if((addr = a[bn2]) ==0 ){
+      a[bn2] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    // 直接释放还是等一级块写完后再一起释放呢？
+    brelse(bp);
+    // 获取这个块
+    bp = bread(ip->dev,addr);
+    a = (uint*)bp->data;
+    bn %= (BSIZE / sizeof(uint));
+    if((addr = a[bn])==0){
+      a[bn] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+    return addr;
+  }
   panic("bmap: out of range");
 }
 
@@ -430,6 +462,31 @@ itrunc(struct inode *ip)
     brelse(bp);
     bfree(ip->dev, ip->addrs[NDIRECT]);
     ip->addrs[NDIRECT] = 0;
+  }
+  if(ip->addrs[NDIRECT+1]){
+    bp = bread(ip->dev,ip->addrs[NDIRECT+1]);
+    // 遍历
+    a = (uint*)bp->data;
+    //双层for循环
+    for(i=0;i<(BSIZE/sizeof(uint));i++){
+      // 映射了才会进行
+      if(a[i]){
+        struct buf* bbp = bread(ip->dev,a[i]);
+        uint* b = (uint*)bbp->data;
+        for(j=0;j<(BSIZE/sizeof(uint));j++){
+          if(b[j]){
+            bfree(ip->dev,b[j]);
+          }
+        }
+        // 解锁
+        brelse(bbp);
+        // 释放一级块
+        bfree(ip->dev,a[i]);
+      }
+    }
+    brelse(bp);
+    bfree(ip->dev,ip->addrs[NDIRECT+1]);
+    ip->addrs[NDIRECT+1] = 0;
   }
 
   ip->size = 0;
