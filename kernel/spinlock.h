@@ -1,4 +1,5 @@
 // Mutual exclusion lock.
+#pragma once
 struct spinlock {
   uint locked;       // Is the lock held?
 

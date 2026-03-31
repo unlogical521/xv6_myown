@@ -1,4 +1,6 @@
 // Saved registers for kernel context switches.
+#pragma once
+#include "spinlock.h"
 struct context {
   uint64 ra;
   uint64 sp;
@@ -81,6 +83,27 @@ struct trapframe {
 };
 
 enum procstate { UNUSED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
+// virtual memory area
+// 文件映射
+struct vma {
+  // 标志位，判断是否是初次使用，用于判断是否需要处理空洞
+  int used;
+  // 是否可用
+  int valid;
+  // 空间
+  uint64 vstart;
+  // 大小
+  uint64 sz;
+  // 文件
+  struct file* f;
+  // 权限
+  int limit;
+  // 是否要写 ???
+  int flags;
+  uint64 offset;
+};
+#define NVMA 16
+
 
 // Per-process state
 struct proc {
@@ -103,4 +126,5 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  struct vma vmas[NVMA];
 };

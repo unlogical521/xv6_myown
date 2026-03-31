@@ -5,6 +5,9 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "proc.h"
+#include "fcntl.h"
+#include "file.h"
 
 /*
  * the kernel's page table.
@@ -100,6 +103,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 // Look up a virtual address, return the physical address,
 // or 0 if not mapped.
 // Can only be used to look up user pages.
+// 页对齐的
 uint64
 walkaddr(pagetable_t pagetable, uint64 va)
 {
@@ -427,5 +431,88 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return 0;
   } else {
     return -1;
+  }
+}
+#include "types.h"
+#include "riscv.h"
+#include "defs.h"
+#include "memlayout.h"
+#include "spinlock.h"
+#include "proc.h"
+
+// ======================
+// 工具函数：写回文件（提到外部，static 局部使用）
+// ======================
+static void
+writeback(struct vma* v, uint64 pa, uint64 f_off, uint64 sz)
+{
+  // 不是共享映射 或 没有文件 → 不写回
+  if (!(v->flags & MAP_SHARED) || v->f == 0)
+    return;
+
+  begin_op();
+  ilock(v->f->ip);
+  writei(v->f->ip, 0, pa, f_off, sz);
+  iunlock(v->f->ip);
+  end_op();
+}
+
+// ======================
+// 主解映射函数
+// ======================
+void
+vmmunmap(pagetable_t pagetable, uint64 va, uint64 len, struct vma* v)
+{
+  uint64 end = va + len;
+  pte_t *pte;
+  uint64 pa, off, n;
+
+  // ======================
+  // 1. 处理首页（非对齐：只写回，不释放）
+  // ======================
+  if (va != PGROUNDDOWN(va)) {
+    if ((pte = walk(pagetable, va, 0)) != 0 && (*pte & PTE_V)) {
+      pa = PTE2PA(*pte) + (va - PGROUNDDOWN(va));
+      off = v->offset + (va - v->vstart);
+      n = PGROUNDUP(va) - va;
+      writeback(v, pa, off, n);
+    }
+    va = PGROUNDUP(va);
+  }
+
+  // ======================
+  // 2. 处理尾页（非对齐：只写回，不释放）
+  // ======================
+  if (end != PGROUNDUP(end)) {
+    uint64 last_va = PGROUNDDOWN(end - 1);
+    if ((pte = walk(pagetable, last_va, 0)) != 0 && (*pte & PTE_V)) {
+      pa = PTE2PA(*pte);
+      off = v->offset + (last_va - v->vstart);
+      n = end - last_va;
+      writeback(v, pa, off, n);
+    }
+    end = last_va;
+  }
+
+  // ======================
+  // 3. 处理中间整页（写回 + 释放 + 清空页表）
+  // ======================
+  for (uint64 a = va; a < end; a += PGSIZE) {
+    if ((pte = walk(pagetable, a, 0)) == 0)
+      continue;
+
+    if (*pte & PTE_V) {
+      pa = PTE2PA(*pte);
+      off = v->offset + (a - v->vstart);
+
+      // 共享映射写回文件
+      writeback(v, pa, off, PGSIZE);
+
+      // 释放物理页
+      kfree((void*)pa);
+
+      // 清空页表项（关键！）
+      *pte = 0;
+    }
   }
 }

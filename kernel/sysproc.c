@@ -1,3 +1,4 @@
+
 #include "types.h"
 #include "riscv.h"
 #include "defs.h"
@@ -6,6 +7,8 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "file.h"
+#include "fcntl.h"
 
 uint64
 sys_exit(void)
@@ -95,3 +98,4 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+

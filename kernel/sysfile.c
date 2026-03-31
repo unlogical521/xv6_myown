@@ -3,7 +3,7 @@
 // Mostly argument checking, since we don't trust
 // user code, and calls into file.c and fs.c.
 //
-
+#include "memlayout.h"
 #include "types.h"
 #include "riscv.h"
 #include "defs.h"
@@ -482,5 +482,170 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+// 根据故障地址确定vma起始地址
+struct vma* findvma(struct proc* p,uint64 va){
+  for(int i=0;i<NVMA;i++){
+    struct vma* v = &p->vmas[i];
+    // 判断va是否属于这个区间
+    if(v->valid && va>=v->vstart && va < (v->vstart + v->sz)){
+      return v;
+    }
+  }
+  return 0;
+}
+// 进行分页,成功1，失败0
+int allocvma(uint64 va){
+  // 每次分一页
+  struct proc* p = myproc();
+  struct vma* v = 0;
+  if((v = findvma(p,va))==0){
+    return 0;
+  }
+  // 分页
+  void* pa;
+  if((pa = kalloc())==0){
+    printf("allocvma : no more memory");
+    return 0;
+  }
+  // 先写入再建立映射？还是先映射后写入？
+  memset(pa,0,PGSIZE);
+  begin_op();
+  //写入内存
+  ilock(v->f->ip);
+  // readi函数负责根据inode读取文件数据
+  // 首先需要将文件数据映射到内核中
+  // 其次判断目标地址是用户空间还是内核空间
+  // 如果是内核，则直接memmove数据
+  // 如果是用户，则需要从内核复制到用户
+  // 因为内核是直接映射的，va=pa；
+  // 这里就假装是内核，等写入到物理内存后，再与用户建立映射
+  readi(v->f->ip,0,(uint64)pa,v->offset + PGROUNDDOWN(va-v->vstart),PGSIZE);
+  iunlock(v->f->ip);
+  end_op();
+  int perm = PTE_U;
+  if(v->limit & PROT_READ){
+    perm |= PTE_R;
+  }
+  if(v->limit & PROT_WRITE){
+    perm |= PTE_W;
+  }
+  if(v->limit & PROT_EXEC){
+    perm |= PTE_X;
+  }
+  // 映射
+  if(mappages(p->pagetable,va,PGSIZE,(uint64)pa,perm)<0){
+    printf("allocvma : mappages err");
+    return 0;
+  }
+  return 1;
+}
+// 将文件内容直接映射到进程的地址空间
+uint64
+sys_mmap(void){
+  // 取参数
+  uint64 addr,sz,offset;
+  int prot,flag,fd;
+  struct file* f = 0;
+  if(argaddr(0,&addr)<0 || argaddr(1,&sz)<0 || argint(2,&prot)<0 || argint(3,&flag)<0 ||
+  argfd(4,&fd,&f)<0  || argaddr(5,&offset)<0
+){
+  return -1;
+}
+  if((!f->readable && (prot&(PROT_READ))) || ((!f->writable && (prot & PROT_WRITE)) && (flag&MAP_PRIVATE))){
+    return -1;
+  }
+  // 取值后赋值
+  sz = PGROUNDUP(sz);
+  struct proc* p = myproc();
+  struct vma * v = 0;
+  uint64 vend = VMAEND;
+  // 加锁
+  acquire(&p->lock);
+  for(int i=0;i<NVMA;i++){
+    struct vma* vv = &p->vmas[i];
+    if(vv->valid == 0){
+      // 占用最初的这个
+      if(v == 0){
+        v = vv;
+        v->valid = 1;
+      }
+    }
+    else{
+      vend -= vv->sz;
+    }
+  } 
+  if(v==0){
+    release(&p->lock);
+    printf("mmap : no more vma");
+    return -1;
+  }
+  // 起始地址
+  // 只开了空头支票
+  v->vstart = vend-sz;
+  v->sz = sz;
+  v->offset = offset;
+  v->flags = flag;
+  v->f = f;
+  v->limit = prot;
+  filedup(f);
+  release(&p->lock);
+  return v->vstart;
+}
+uint64
+sys_munmap(void)
+{
+  uint64 addr, len;
+  struct proc *p = myproc();
+  struct vma *v;
+
+  // 1. 获取参数
+  if(argaddr(0, &addr) < 0 || argaddr(1, &len) < 0)
+    return -1;
+
+  if(len == 0)
+    return 0;
+
+  // 2. 必须页对齐 (POSIX 标准)
+  uint64 va = PGROUNDDOWN(addr);
+  uint64 sz = PGROUNDUP(addr + len) - va;
+
+  // 3. 找到对应的 VMA
+  v = findvma(p, va);
+  if(v == 0 || !v->valid)
+    return -1;
+
+  uint64 vstart = v->vstart;
+  uint64 vend = v->vstart + v->sz;
+
+  // 4. 检查：解映射必须完全在一个 VMA 内
+  if(va < vstart || va + sz > vend)
+    return -1;
+
+  // 5. 禁止中间挖洞！只能从 头部 或 尾部 解除映射
+  // 不允许中间一段解除
+  if(va != vstart && va + sz != vend)
+    return -1;
+
+  // 6. 执行真正的解映射（回写文件 + 释放物理页 + 清空页表）
+  vmmunmap(p->pagetable, va, sz, v);
+
+  // 7. 更新 VMA 信息
+  if(va == vstart){
+    // 从 头部 解除：移动起始地址
+    v->vstart += sz;
+    v->offset += sz;
+  } else {
+    // 从 尾部 解除：只缩小大小
+  }
+  v->sz -= sz;
+
+  // 8. 如果 VMA 空了，关闭文件，标记无效
+  if(v->sz == 0){
+    fileclose(v->f);
+    v->valid = 0;
+  }
+
   return 0;
 }

@@ -134,6 +134,12 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  // 初始化vma数组
+  for(int i=0;i<NVMA;i++){
+    p->vmas[i].valid = 0;
+    p->vmas[i].used  = 0;
+  }
+
   return p;
 }
 
@@ -148,6 +154,10 @@ freeproc(struct proc *p)
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+  for(int i = 0; i < NVMA; i++) {
+    struct vma *v = &p->vmas[i];
+    vmmunmap(p->pagetable, v->vstart, v->sz, v);
+  }
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -295,6 +305,13 @@ fork(void)
     if(p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
+  for(i = 0; i < NVMA; i++) {
+    struct vma *v = &p->vmas[i];
+    if(v->valid) {
+      np->vmas[i] = *v;
+      filedup(v->f);
+    }
+  }
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 

@@ -1,4 +1,5 @@
 // which hart (core) is this?
+#pragma once
 static inline uint64
 r_mhartid()
 {

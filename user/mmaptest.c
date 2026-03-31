@@ -5,7 +5,6 @@
 #include "kernel/riscv.h"
 #include "kernel/fs.h"
 #include "user/user.h"
-
 void mmap_test();
 void fork_test();
 char buf[BSIZE];
@@ -109,7 +108,7 @@ mmap_test(void)
   // due to PROT_READ). the fifth argument is the file descriptor
   // of the file to be mapped. the last argument is the starting
   // offset in the file.
-  //
+  // 返回文件在内存中映射的起始地址
   char *p = mmap(0, PGSIZE*2, PROT_READ, MAP_PRIVATE, fd, 0);
   if (p == MAP_FAILED)
     err("mmap (1)");
