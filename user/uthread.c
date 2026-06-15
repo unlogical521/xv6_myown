@@ -30,6 +30,8 @@ struct context {
   uint64 s10;
   uint64 s11;
 };
+// 线程结构体
+// 用户自定义线程？
 struct thread {
   char       stack[STACK_SIZE]; /* the thread's stack */
   int        state;             /* FREE, RUNNING, RUNNABLE */
