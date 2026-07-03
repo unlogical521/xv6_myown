@@ -9,18 +9,25 @@
 #include "net.h"
 
 #define TX_RING_SIZE 16
+// 每个发送描述符环共16个描述符
+// 每个描述符记录了一个内存块的地址、大小等信息
 static struct tx_desc tx_ring[TX_RING_SIZE] __attribute__((aligned(16)));
+// 发送缓冲区
 static struct mbuf *tx_mbufs[TX_RING_SIZE];
 
 #define RX_RING_SIZE 16
+// 接收描述符环
 static struct rx_desc rx_ring[RX_RING_SIZE] __attribute__((aligned(16)));
+// 接收缓冲区
 static struct mbuf *rx_mbufs[RX_RING_SIZE];
 
 // remember where the e1000's registers live.
+// 静态，一旦映射就锁定这个位置，不可改变，每次都要从内存中重新读取
 static volatile uint32 *regs;
 
 struct spinlock e1000_lock;
 
+// e1000网卡寄存器映射的内存地址
 // called by pci_init().
 // xregs is the memory address at which the
 // e1000's registers are mapped.
@@ -28,7 +35,8 @@ void
 e1000_init(uint32 *xregs)
 {
   int i;
-
+  // 初始化锁
+  // 网卡是全局共享资源，确保线程安全
   initlock(&e1000_lock, "e1000");
 
   regs = xregs;
@@ -38,19 +46,22 @@ e1000_init(uint32 *xregs)
   regs[E1000_CTL] |= E1000_CTL_RST;
   regs[E1000_IMS] = 0; // redisable interrupts
   __sync_synchronize();
-
+  
+  // 初始化发送
   // [E1000 14.5] Transmit initialization
   memset(tx_ring, 0, sizeof(tx_ring));
   for (i = 0; i < TX_RING_SIZE; i++) {
     tx_ring[i].status = E1000_TXD_STAT_DD;
     tx_mbufs[i] = 0;
   }
+  // 发送描述符环基址
   regs[E1000_TDBAL] = (uint64) tx_ring;
   if(sizeof(tx_ring) % 128 != 0)
     panic("e1000");
   regs[E1000_TDLEN] = sizeof(tx_ring);
   regs[E1000_TDH] = regs[E1000_TDT] = 0;
   
+  // 初始化接收
   // [E1000 14.4] Receive initialization
   memset(rx_ring, 0, sizeof(rx_ring));
   for (i = 0; i < RX_RING_SIZE; i++) {
