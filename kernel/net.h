@@ -29,10 +29,12 @@ char *mbuftrim(struct mbuf *m, unsigned int len);
 #define mbufpushhdr(mbuf, hdr) (typeof(hdr)*)mbufpush(mbuf, sizeof(hdr))
 #define mbufputhdr(mbuf, hdr) (typeof(hdr)*)mbufput(mbuf, sizeof(hdr))
 #define mbuftrimhdr(mbuf, hdr) (typeof(hdr)*)mbuftrim(mbuf, sizeof(hdr))
-
+// 分配一个新的mbuf
 struct mbuf *mbufalloc(unsigned int headroom);
+// 释放一个mbuf
 void mbuffree(struct mbuf *m);
 
+// mbuf 队列
 struct mbufq {
   struct mbuf *head;  // the first element in the queue
   struct mbuf *tail;  // the last element in the queue
@@ -77,6 +79,8 @@ static inline uint32 bswapl(uint32 val)
 #define ETHADDR_LEN 6
 
 // an Ethernet packet header (start of the packet).
+// 以太网报文头
+// 目标主机、源主机？
 struct eth {
   uint8  dhost[ETHADDR_LEN];
   uint8  shost[ETHADDR_LEN];
@@ -87,6 +91,7 @@ struct eth {
 #define ETHTYPE_ARP 0x0806 // Address resolution protocol
 
 // an IP packet header (comes after an Ethernet header).
+// ip报文头
 struct ip {
   uint8  ip_vhl; // version << 4 | header length >> 2
   uint8  ip_tos; // type of service

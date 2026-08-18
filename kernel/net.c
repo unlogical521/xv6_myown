@@ -10,13 +10,15 @@
 #include "proc.h"
 #include "net.h"
 #include "defs.h"
-
+//本地IP
 static uint32 local_ip = MAKE_IP_ADDR(10, 0, 2, 15); // qemu's idea of the guest IP
+//mac地址
 static uint8 local_mac[ETHADDR_LEN] = { 0x52, 0x54, 0x00, 0x12, 0x34, 0x56 };
+//广播地址
 static uint8 broadcast_mac[ETHADDR_LEN] = { 0xFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF };
 
-// Strips data from the start of the buffer and returns a pointer to it.
-// Returns 0 if less than the full requested length is available.
+// 从缓冲区开头读取数据，并返回指向该数据的指针。
+// 如果可用长度小于请求的总长度，则返回 0。
 char *
 mbufpull(struct mbuf *m, unsigned int len)
 {
@@ -28,7 +30,7 @@ mbufpull(struct mbuf *m, unsigned int len)
   return tmp;
 }
 
-// Prepends data to the beginning of the buffer and returns a pointer to it.
+// 将数据追加到缓冲区开头，并返回指向该缓冲区的指针。
 char *
 mbufpush(struct mbuf *m, unsigned int len)
 {
@@ -39,7 +41,7 @@ mbufpush(struct mbuf *m, unsigned int len)
   return m->head;
 }
 
-// Appends data to the end of the buffer and returns a pointer to it.
+// 将数据追加到缓冲区末尾，并返回指向该缓冲区的指针。
 char *
 mbufput(struct mbuf *m, unsigned int len)
 {
@@ -61,7 +63,8 @@ mbuftrim(struct mbuf *m, unsigned int len)
   return m->head + m->len;
 }
 
-// Allocates a packet buffer.
+// 分配一个数据包缓冲区.
+// 一页内存
 struct mbuf *
 mbufalloc(unsigned int headroom)
 {

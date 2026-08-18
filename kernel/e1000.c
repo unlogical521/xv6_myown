@@ -22,7 +22,6 @@ static struct rx_desc rx_ring[RX_RING_SIZE] __attribute__((aligned(16)));
 static struct mbuf *rx_mbufs[RX_RING_SIZE];
 
 // remember where the e1000's registers live.
-// 静态，一旦映射就锁定这个位置，不可改变，每次都要从内存中重新读取
 static volatile uint32 *regs;
 
 struct spinlock e1000_lock;
@@ -76,7 +75,7 @@ e1000_init(uint32 *xregs)
   regs[E1000_RDH] = 0;
   regs[E1000_RDT] = RX_RING_SIZE - 1;
   regs[E1000_RDLEN] = sizeof(rx_ring);
-
+  // MAC地址，网卡地址
   // filter by qemu's MAC address, 52:54:00:12:34:56
   regs[E1000_RA] = 0x12005452;
   regs[E1000_RA+1] = 0x5634 | (1<<31);
@@ -113,7 +112,32 @@ e1000_transmit(struct mbuf *m)
   // the TX descriptor ring so that the e1000 sends it. Stash
   // a pointer so that it can be freed after sending.
   //
-  
+  // 获取锁
+  acquire(&e1000_lock);
+  // 获取下一个可用的发送描述符
+  uint32 idx = regs[E1000_TDT];
+  struct tx_desc* desc = &tx_ring[idx];
+  // 判断是否发送完成
+  if((desc->status & E1000_TXD_STAT_DD) == 0){
+    release(&e1000_lock);
+    return -1;
+  }
+  // 释放掉之前的
+  if(tx_mbufs[idx]){
+    mbuffree(tx_mbufs[idx]);
+    tx_mbufs[idx] = 0;
+  }
+  // 将要发送的内存块与尾指针指向的描述符关联
+  desc->addr = (uint64)m->head;
+  desc->length = m->len;
+  // 命令标识
+  desc->cmd = E1000_RXD_STAT_EOP | E1000_TXD_CMD_RS;
+  tx_mbufs[idx] = m;
+  // 更新尾指针
+  regs[E1000_TDT] = (regs[E1000_TDT] + 1) % TX_RING_SIZE;
+
+  release(&e1000_lock);
+
   return 0;
 }
 
@@ -126,6 +150,27 @@ e1000_recv(void)
   // Check for packets that have arrived from the e1000
   // Create and deliver an mbuf for each packet (using net_rx()).
   //
+  // 接收逻辑
+  while(1){
+    // 网卡将数据包填到描述符指向内存块
+    // 先找到可用的描述符
+    uint32 idx = (regs[E1000_RDT] + 1) % RX_RING_SIZE;
+    struct rx_desc* desc = &rx_ring[idx];
+    // 如果没有数据
+    if((desc->status & E1000_RXD_STAT_DD) == 0){
+      return;
+    }
+    // 有数据的话,将数据包转发给网络层
+    rx_mbufs[idx]->len = desc->length;
+    net_rx(rx_mbufs[idx]);
+    // 给这个描述符分配一个新的mbuf
+    rx_mbufs[idx] = mbufalloc(0);
+    desc->addr = (uint64)rx_mbufs[idx]->head; 
+    desc->status = 0;
+
+    //更新尾指针
+    regs[E1000_RDT] = idx;
+  }
 }
 
 void
