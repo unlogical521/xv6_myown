@@ -225,12 +225,12 @@ int
 main(int argc, char *argv[])
 {
   int i, ret;
-  uint16 dport = NET_TESTS_PORT;
+  uint16 dport = 2000;
 
   printf("nettests running on port %d\n", dport);
 
   printf("testing ping: ");
-  ping(2000, dport, 1);
+  ping(5000, 2000, 1);
   printf("OK\n");
 
   printf("testing single-process pings: ");
